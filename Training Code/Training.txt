@@ -1,0 +1,107 @@
+import os
+import zipfile
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization, GlobalAveragePooling2D
+from tensorflow.keras.optimizers import Adam
+import matplotlib.pyplot as plt
+from google.colab import files
+
+import zipfile
+import os
+
+# Path to the zip file
+zip_file_path = '/content/FER.zip'  # Replace with your dataset's zip file path
+
+# Directory to extract the dataset
+extract_to_dir = '/content'  # Replace with your desired extraction directory
+
+# Create the extraction directory if it doesn't exist
+if not os.path.exists(extract_to_dir):
+    os.makedirs(extract_to_dir)
+
+# Unzip the dataset
+with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+    zip_ref.extractall(extract_to_dir)
+
+print(f"Dataset extracted to: {extract_to_dir}")
+
+IMG_SIZE = 48
+BATCH_SIZE = 32
+EPOCHS = 50
+TRAIN_PATH ='/content/train'
+TEST_PATH = '/content/test'
+
+train_datagen = ImageDataGenerator(
+    rescale=1./255,
+    rotation_range=20,
+    zoom_range=0.2,
+    width_shift_range=0.1,
+    height_shift_range=0.1,
+    shear_range=0.1,
+    horizontal_flip=True
+)
+
+test_datagen = ImageDataGenerator(rescale=1./255)
+
+train_generator = train_datagen.flow_from_directory(
+    TRAIN_PATH,
+    target_size=(IMG_SIZE, IMG_SIZE),
+    batch_size=BATCH_SIZE,
+    class_mode='categorical'
+)
+
+val_generator = test_datagen.flow_from_directory(
+    TEST_PATH,
+    target_size=(IMG_SIZE, IMG_SIZE),
+    batch_size=BATCH_SIZE,
+    class_mode='categorical'
+)
+
+from tensorflow.keras.regularizers import l2
+
+model = Sequential([
+    Conv2D(64, (3,3), activation='relu', padding='same', kernel_regularizer=l2(0.001), input_shape=(IMG_SIZE, IMG_SIZE, 3)),
+    BatchNormalization(),
+    MaxPooling2D(2,2),
+    Dropout(0.25),
+
+    Conv2D(128, (3,3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
+    BatchNormalization(),
+    MaxPooling2D(2,2),
+    Dropout(0.25),
+
+    Conv2D(256, (3,3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
+    BatchNormalization(),
+    MaxPooling2D(2,2),
+    Dropout(0.3),
+
+    Conv2D(512, (3,3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
+    BatchNormalization(),
+    MaxPooling2D(2,2),
+    Dropout(0.4),
+
+    GlobalAveragePooling2D(),
+    Dense(256, activation='relu'),
+    Dropout(0.5),
+    Dense(7, activation='softmax')
+])
+
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+early_stop = EarlyStopping(patience=10, restore_best_weights=True, monitor='val_loss')
+lr_scheduler = ReduceLROnPlateau(factor=0.5, patience=5, monitor='val_loss', verbose=1)
+
+
+history = model.fit(
+    train_generator,
+    validation_data=val_generator,
+    epochs=EPOCHS,
+    callbacks=[early_stop, lr_scheduler]
+)
+
+model.save("emotion_model.h5")
+
